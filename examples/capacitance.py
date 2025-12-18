@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating the capacitance package.
+Example script demonstrating the pyedl package.
 """
 
 import numpy as np
 import pandas as pd
-from capacitance import ion_database, solvent_database
-from capacitance import ElectrochemicalSystem, ElectrochemicalModel
-from capacitance import plot_capacitance_vs_potential, save_capacitance_data
+from pyedl import ion_database, solvent_database
+from pyedl import ElectrochemicalSystem, StericModel
+from pyedl import plot_capacitance_vs_potential, save_capacitance_data
 
 
 def main():
@@ -23,7 +23,7 @@ def main():
         n_hydration_anion=2.7
     )
     
-    model_naf = ElectrochemicalModel(system_naf, steric_model='cs')
+    model_naf = StericModel(system_naf, steric_model='cs')
     
     # Calculate capacitance at specific potentials
     potentials = [0.0, 0.5, 1.0]
@@ -45,7 +45,7 @@ def main():
         n_hydration_anion=0
     )
     
-    model_il = ElectrochemicalModel(system_il, steric_model='cs')
+    model_il = StericModel(system_il, steric_model='cs')
     
     # Plot capacitance curves
     print("Plotting capacitance curves...")
@@ -90,7 +90,7 @@ def main():
     print("Example 4: Comparing steric models")
     
     # Liu model
-    model_liu = ElectrochemicalModel(system_naf, steric_model='liu')
+    model_liu = StericModel(system_naf, steric_model='liu')
     
     # Compare at different potentials
     test_potentials = np.linspace(-1, 1, 101)

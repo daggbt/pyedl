@@ -1,68 +1,15 @@
 """
-Electrochemical system and model classes for capacitance calculations.
+Steric models (Carnahan-Starling, Liu) for electrochemical calculations.
 """
 
 import numpy as np
 import scipy.constants as sc
 from scipy import optimize
-from typing import Tuple
 
-from .ions import Ion, Solvent, solvent_database
-
-
-class ElectrochemicalSystem:
-    """Represents an electrochemical system with specified ions and solvent."""
-    
-    def __init__(self, cation: Ion, anion: Ion, solvent: Solvent, 
-                 concentration: float, temperature: float = 298.15,
-                 n_hydration_cation: float = 0, n_hydration_anion: float = 0):
-        """
-        Initialize the electrochemical system.
-        
-        Parameters:
-        -----------
-        cation : Ion
-            Positive ion in the system
-        anion : Ion
-            Negative ion in the system
-        solvent : Solvent
-            Solvent properties
-        concentration : float
-            Bulk concentration in mol/L
-        temperature : float
-            Temperature in Kelvin
-        n_hydration_cation : float
-            Number of water molecules hydrating the cation
-        n_hydration_anion : float
-            Number of water molecules hydrating the anion
-        """
-        self.cation = cation
-        self.anion = anion
-        self.solvent = solvent
-        self.concentration = concentration
-        self.temperature = temperature
-        self.n_hydration_cation = n_hydration_cation
-        self.n_hydration_anion = n_hydration_anion
-        
-        # Calculate effective ion polarizabilities (hydrated)
-        water_pol = solvent_database['water'].solventPolarizability
-        self.cation_polarizability = cation.get_hydrated_polarizability(n_hydration_cation, water_pol)
-        self.anion_polarizability = anion.get_hydrated_polarizability(n_hydration_anion, water_pol)
-        
-    def get_ion_radii(self) -> Tuple[float, float]:
-        """Get ion radii in Angstroms as a tuple (cation, anion)."""
-        return (self.cation.radiusAng, self.anion.radiusAng)
-    
-    def get_ion_polarizabilities(self) -> Tuple[float, float]:
-        """Get ion polarizabilities as a tuple (cation, anion)."""
-        return (self.cation_polarizability, self.anion_polarizability)
-    
-    def get_dielectric_constant(self) -> float:
-        """Get dielectric constant of the solvent."""
-        return self.solvent.dielectricConstant
+from .base import BaseElectrochemicalModel, ElectrochemicalSystem
 
 
-class ElectrochemicalModel:
+class StericModel(BaseElectrochemicalModel):
     """
     Model for electrochemical capacitance calculations with steric effects.
     """
@@ -80,57 +27,8 @@ class ElectrochemicalModel:
         steric_model : str
             Steric model type ('cs' for Carnahan-Starling or 'liu' for Liu model)
         """
-        # Physical constants
-        self.temperature = system.temperature
-        self.epsilon_r = system.get_dielectric_constant()
-        self.epsilon = system.solvent.get_permittivity()
-        self.kT = sc.k * self.temperature
-                
-        # Concentration parameters
-        self.c_bulk = system.concentration
-                
-        # Ion parameters - convert from Ion objects to original format
-        self.ion_radii = system.get_ion_radii()
-        self.ion_volumes = [system.cation.get_volume_m3(), system.anion.get_volume_m3()]
-        
-        # Volume fraction in bulk
-        self.volfrac_b = self.c_bulk * sum(self.ion_volumes) * 1000 * sc.N_A
-        
-        # Ion polarizabilities (hydrated)
-        self.ion_polarizabilities = system.get_ion_polarizabilities()
-        
-        # Model selection
+        super().__init__(system)
         self.steric_model = steric_model
-
-        # Initialize caches
-        self.surface_volume_fraction_cache = {}
-        self.reduced_dielectric_cache = {}
-        self.steric_thickness_cache = {}
-
-        self.ion_permitivities = [self.get_ion_permittivity(self.ion_polarizabilities[i], self.ion_volumes[i]) 
-                                  for i in range(len(self.ion_volumes))]
-
-    def get_ion_parameters(self, potential):
-        """
-        Returns the parameters for the ion at the specified potential.
-        
-        Parameters:
-        -----------
-        potential : float
-            Electric potential in V
-            
-        Returns:
-        --------
-        tuple: (charge, volume, epsilon_i)
-            Charge, volume, and permittivity of the counterion
-        """
-        # Counterion is determined by the sign of the potential
-        counterion_index = 0 if potential < 0 else 1
-        charge = -1 * sc.e if potential >= 0 else 1 * sc.e
-        volume = self.ion_volumes[counterion_index]
-        epsilon_i = self.ion_permitivities[counterion_index]
-        
-        return charge, volume, epsilon_i
     
     def carnahan_starling(self, phi, relative_to_bulk=True):
         """Carnahan-Starling model for steric energy."""
@@ -161,59 +59,6 @@ class ElectrochemicalModel:
             return self.carnahan_starling(phi, relative_to_bulk)
         else:
             return self.liu_model(phi, relative_to_bulk)
-    
-    def non_linear_boltzmann_equation(self, volfrac_0, potential):
-        """
-        f(φ₀) = φ₀ - c_b * volume * exp(-β z e Φ₀) * exp(-β Δμ^{cs}(φ₀)) = 0.
-        
-        Returns:
-            float: Value of the equation.
-        """
-        charge, volume, _ = self.get_ion_parameters(potential)
-        beta = 1/self.kT
-
-        # Calculate steric energy with current volume fraction
-        steric_energy = self.get_steric_energy(volfrac_0)
-        
-        # Calculate electrostatic energy
-        electrostatic_energy = charge * potential
-        
-        # Calculate Boltzmann factor
-        boltzmann_factor = np.exp(-beta * (electrostatic_energy + steric_energy))
-        
-        # Calculate volume fraction from Boltzmann distribution
-        calculated_volfrac = self.c_bulk * volume * 1000 * sc.N_A * boltzmann_factor
-        
-        # Return difference (should be zero at solution)
-        return volfrac_0 - calculated_volfrac
-    
-    def get_reduced_dielectric_from_volfrac(self, epsilon_i, volfrac_0):
-        """Calculate reduced dielectric constant from volume fraction."""
-        ### https://pubs.acs.org/doi/epdf/10.1021/la2025445?ref=article_openPDF
-        numerator = (1 + 2 * volfrac_0) * epsilon_i + 2 * (1 - volfrac_0) * self.epsilon_r
-        denominator = (1 - volfrac_0) * epsilon_i + (2 + volfrac_0) * self.epsilon_r
-
-        # Check to avoid division by zero
-        if denominator == 0:
-            raise ValueError("Denominator becomes zero. Check the values of dielectric_constant and surface volume fraction.")
-        
-        epsilon_eff = self.epsilon_r * numerator / denominator
-
-        return epsilon_eff
-    
-    def get_ion_permittivity(self, alpha_i, volume_i):
-        """Calculate the permittivity of an ion from its polarizability."""
-        v_i_cubic_angstrom = volume_i * 1e30
-        k = 4 * sc.pi * alpha_i / 3 / v_i_cubic_angstrom
-
-        # Compute the numerator and denominator of the Clausius-Mossotti equation
-        numerator = -1 - 2 * k
-        denominator = k - 1
-
-        # Calculate the permittivity of the ion
-        epsilon_i = numerator / denominator
-        
-        return epsilon_i
     
     def get_reduced_dielectric_from_potential(self, potential):
         """
@@ -249,10 +94,6 @@ class ElectrochemicalModel:
         # Calculate Debye length with reduced dielectric
         epsilon_adjusted = sc.epsilon_0 * reduced_dielectric
         return np.sqrt(epsilon_adjusted * self.kT / (2 * self.c_bulk * sc.e**2 * 1000 * sc.N_A))
-    
-    def get_electrostatic_interaction(self, charge, potential):
-        """Calculate the electrostatic interaction energy."""
-        return charge * potential
     
     def zero_func_phi(self, phi, potential, nes_all=None, relative_to_bulk=True):
         """Function to find the root for the volume fraction calculation."""
@@ -678,3 +519,116 @@ class ElectrochemicalModel:
             c_density = -self.epsilon_r * sc.epsilon_0 * potential / debye_len
             
             return capacitance, c_density
+
+    def get_entropic_energy(self, potential):
+        """
+        Calculate the entropic component of the grand potential.
+        Eq. 17 in manuscript.
+        """
+        if abs(potential) < 1e-10:
+            return 0.0
+            
+        # Get parameters
+        q, v, _ = self.get_ion_parameters(potential)
+        volfrac_surface = self.get_steric_parameter_phi(potential, [])
+        
+        # Concentrations in number density (m^-3)
+        c_0 = volfrac_surface / v 
+        c_b = self.c_bulk * 1000 * sc.N_A
+        
+        H = self.get_steric_layer_thickness(potential)
+        
+        # Eq 17
+        # Ω_en / kBT = (H/2) * [ c0^2/(c0-cb) * ln(c0/cb) + (cb - 3c0)/2 ]
+        
+        # Handle singularity when c0 -> cb (low potential)
+        if abs(c_0 - c_b) < 1e-10:
+             return 0.0
+
+        term1 = (c_0**2 / (c_0 - c_b)) * np.log(c_0 / c_b)
+        term2 = (c_b - 3 * c_0) / 2
+        
+        omega_en_kbt = (H / 2) * (term1 + term2)
+        
+        return omega_en_kbt * self.kT
+
+    def get_electrostatic_energy(self, potential):
+        """
+        Calculate the electrostatic component of the grand potential.
+        Eq. 18 in manuscript.
+        """
+        if abs(potential) < 1e-10:
+            return 0.0
+
+        # Get parameters
+        q, v, _ = self.get_ion_parameters(potential)
+        volfrac_surface = self.get_steric_parameter_phi(potential, [])
+        
+        # Concentrations in number density (m^-3)
+        c_0 = volfrac_surface / v 
+        c_b = self.c_bulk * 1000 * sc.N_A
+        
+        H = self.get_steric_layer_thickness(potential)
+        
+        reduced_dielectric = self.get_reduced_dielectric_from_potential(potential)
+        epsilon_adjusted = sc.epsilon_0 * reduced_dielectric
+        
+        # Eq 18
+        # Ω_el = (z^2 e^2 H^3 / 120ε) * [3c0^2 + 9c0cb + 8cb^2]
+        # z*e is q
+        
+        prefactor = (q**2 * H**3) / (120 * epsilon_adjusted)
+        bracket = 3 * c_0**2 + 9 * c_0 * c_b + 8 * c_b**2
+        
+        return prefactor * bracket
+
+    def get_steric_free_energy(self, potential):
+        """
+        Calculate the steric component of the grand potential.
+        Eq. 19 in manuscript.
+        """
+        if abs(potential) < 1e-10:
+            return 0.0
+
+        # Get parameters
+        q, v, _ = self.get_ion_parameters(potential)
+        volfrac_surface = self.get_steric_parameter_phi(potential, [])
+        
+        # Concentrations in number density (m^-3)
+        c_0 = volfrac_surface / v 
+        c_b = self.c_bulk * 1000 * sc.N_A
+        
+        phi_0 = volfrac_surface
+        phi_b = self.volfrac_b
+        
+        H = self.get_steric_layer_thickness(potential)
+        
+        # Eq 19
+        # Ω_st / kBT = (H/v) * [ (1 + 3(1-φ0)(1-φb))/((1-φ0)(1-φb)) + 2/(φb-φ0) * ln((1-φ0)/(1-φb)) ] 
+        #              - (H/2)(cb-c0) * [ (4-3φb)/(1-φb)^2 ]
+        
+        # Handle singularity when phi_0 -> phi_b
+        if abs(phi_0 - phi_b) < 1e-10:
+            return 0.0
+
+        term1_num = 1 + 3 * (1 - phi_0) * (1 - phi_b)
+        term1_den = (1 - phi_0) * (1 - phi_b)
+        term1 = term1_num / term1_den
+        
+        term2 = (2 / (phi_b - phi_0)) * np.log((1 - phi_0) / (1 - phi_b))
+        
+        bracket1 = term1 + term2
+        part1 = (H / v) * bracket1
+        
+        bracket2 = (4 - 3 * phi_b) / (1 - phi_b)**2
+        part2 = (H / 2) * (c_b - c_0) * bracket2
+        
+        omega_st_kbt = part1 - part2
+        
+        return omega_st_kbt * self.kT
+
+    def get_total_energy(self, potential):
+        """Calculate total grand potential energy."""
+        return self.get_entropic_energy(potential) + \
+               self.get_electrostatic_energy(potential) + \
+               self.get_steric_free_energy(potential)

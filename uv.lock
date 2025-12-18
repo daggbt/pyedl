@@ -433,7 +433,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pycapacitance"
+name = "pyedl"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

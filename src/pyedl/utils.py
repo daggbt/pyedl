@@ -4,9 +4,8 @@ Utility functions for the electrochemical capacitance package.
 
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 import scipy.constants as sc
-from .models import ElectrochemicalModel, ElectrochemicalSystem
+from .models import StericModel, ElectrochemicalSystem
 
 
 def polarizability_angstrom_to_si(alpha_angstrom):
@@ -61,7 +60,7 @@ def plot_capacitance_vs_potential(system, expt_cap=None,
         The calculated potential and capacitance values
     """
     # Create model
-    model = ElectrochemicalModel(system, steric_model=steric_model)
+    model = StericModel(system, steric_model=steric_model)
     
     # Define potentials
     potentials = np.linspace(potential_range[0], potential_range[1], num_points)
@@ -125,7 +124,7 @@ def save_capacitance_data(model, potentials, filename=None):
     
     Parameters:
     -----------
-    model : ElectrochemicalModel
+    model : StericModel
         The model to use for calculations
     potentials : array-like
         Array of potentials to calculate capacitance for
@@ -193,7 +192,7 @@ def find_ion_permittivity_from_capacitance(model, potential, exp_capacitance,
     
     Parameters:
     -----------
-    model : ElectrochemicalModel
+    model : StericModel
         The electrochemical model instance
     potential : float
         Electric potential in V

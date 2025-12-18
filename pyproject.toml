@@ -1,7 +1,7 @@
 [project]
-name = "pycapacitance"
+name = "pyedl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Semianalytical models for Electric Double Layers (EDL) including capacitance and free energy calculations."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,3 +10,4 @@ dependencies = [
     "pandas>=2.3.3",
     "scipy>=1.16.3",
 ]
+
