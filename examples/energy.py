@@ -3,9 +3,17 @@
 Example script demonstrating the free energy calculations.
 """
 
+from pathlib import Path
+import sys
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+src_path = Path(__file__).resolve().parents[1] / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 from pyedl import ion_database, solvent_database
 from pyedl import ElectrochemicalSystem, StericModel
 

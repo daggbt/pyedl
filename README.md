@@ -39,6 +39,7 @@ cd pyedl
 # Run examples directly
 uv run examples/capacitance.py
 uv run examples/energy.py
+uv run examples/fitting.py
 ```
 
 ### Using pip
@@ -125,6 +126,47 @@ plot_capacitance_vs_potential(
 )
 ```
 
+### 4. Fitting a Counterion Permittivity
+
+For inversion or optimization workflows, the JIT sweep path can evaluate an ordered capacitance curve efficiently while scanning candidate parameters.
+
+```python
+import numpy as np
+from pyedl import ion_database, solvent_database
+from pyedl import ElectrochemicalSystem, StericModel, fit_counterion_permittivity_curve
+
+system = ElectrochemicalSystem(
+    cation=ion_database['Na+_hydrated'],
+    anion=ion_database['F-_hydrated'],
+    solvent=solvent_database['water'],
+    concentration=1.0,
+    temperature=298.15,
+)
+
+potentials = np.linspace(0.02, 1.0, 251)
+target_model = StericModel(system, steric_model='cs')
+fit_model = StericModel(system, steric_model='cs')
+
+# Synthetic target curve for a positive-potential sweep.
+target_epsilon = 4.75
+target_model.ion_permitivities[1] = target_epsilon
+target_model.invalidate_caches()
+target_capacitance = target_model.analytical_capacitance_sweep_jit(potentials)
+
+fit_result = fit_counterion_permittivity_curve(
+    fit_model,
+    potentials,
+    target_capacitance,
+    epsilon_bounds=(1.0, 10.0),
+    use_jit_sweep=True,
+)
+
+print(f"Recovered permittivity: {fit_result.fitted_permittivity:.3f}")
+print(f"Curve-fit RMSE: {fit_result.rmse:.3e} μF/cm²")
+```
+
+For a complete runnable example, see `examples/fitting.py`.
+
 ## Package Structure
 
 *   `pyedl.models`: Core physics implementation.
@@ -133,6 +175,7 @@ plot_capacitance_vs_potential(
 *   `pyedl.materials`: Chemical property definitions.
     *   `Ion`: Properties like radius, charge, polarizability.
     *   `Solvent`: Dielectric constant, polarizability.
+*   `pyedl.fitting`: Inversion helpers for fitting counterion permittivities to capacitance curves.
 *   `pyedl.utils`: Helper functions for plotting and data export.
 
 ## Citation

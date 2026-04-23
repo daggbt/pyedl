@@ -7,6 +7,12 @@ import scipy.constants as sc
 from scipy import optimize
 
 from .base import BaseElectrochemicalModel, ElectrochemicalSystem
+from ._numba import (
+    MODEL_CS,
+    MODEL_LIU,
+    analytical_capacitance_sweep_numba,
+    steric_parameter_phi_sweep_numba,
+)
 
 
 class StericModel(BaseElectrochemicalModel):
@@ -39,6 +45,9 @@ class StericModel(BaseElectrochemicalModel):
         if isinstance(value, (float, np.floating)):
             return round(float(value), 12)
         return value
+
+    def _steric_model_code(self):
+        return MODEL_CS if self.steric_model == 'cs' else MODEL_LIU
     
     def carnahan_starling(self, phi, relative_to_bulk=True):
         """Carnahan-Starling model for steric energy."""
@@ -273,6 +282,52 @@ class StericModel(BaseElectrochemicalModel):
         self.surface_volume_fraction_cache[cache_key] = root
         
         return root
+
+    def get_steric_parameter_phi_sweep_jit(self, potentials, nes=None, relative_to_bulk=True):
+        """Evaluate surface volume fraction over an ordered sweep using the compiled kernel."""
+        if nes is not None and len(nes) > 0:
+            raise ValueError("JIT sweep does not support non-electrostatic interaction terms.")
+        if not relative_to_bulk:
+            raise ValueError("JIT sweep currently supports only relative_to_bulk=True.")
+
+        potentials_array = np.asarray(potentials, dtype=float)
+        flat_potentials = np.ascontiguousarray(potentials_array.reshape(-1), dtype=float)
+        roots = steric_parameter_phi_sweep_numba(
+            flat_potentials,
+            float(self.c_bulk),
+            float(self.kT),
+            float(self.volfrac_b),
+            np.asarray(self.ion_volumes, dtype=float),
+            self._steric_model_code(),
+        )
+
+        for potential, root in zip(flat_potentials, roots):
+            cache_key = (round(float(potential), 9), (), True)
+            self.surface_volume_fraction_cache[cache_key] = float(root)
+
+        return roots.reshape(potentials_array.shape)
+
+    def analytical_capacitance_sweep_jit(self, potentials, phi_roots=None):
+        """Evaluate analytical capacitance over an ordered sweep using the compiled kernel."""
+        potentials_array = np.asarray(potentials, dtype=float)
+        flat_potentials = np.ascontiguousarray(potentials_array.reshape(-1), dtype=float)
+        if phi_roots is None:
+            roots = np.ascontiguousarray(self.get_steric_parameter_phi_sweep_jit(flat_potentials), dtype=float)
+        else:
+            roots = np.ascontiguousarray(np.asarray(phi_roots, dtype=float).reshape(-1), dtype=float)
+            if roots.shape != flat_potentials.shape:
+                raise ValueError("phi_roots must have the same shape as potentials.")
+        capacitances = analytical_capacitance_sweep_numba(
+            flat_potentials,
+            roots,
+            float(self.c_bulk),
+            float(self.kT),
+            float(self.epsilon_r),
+            float(self.volfrac_b),
+            np.asarray(self.ion_volumes, dtype=float),
+            np.asarray(self.ion_permitivities, dtype=float),
+        )
+        return capacitances.reshape(potentials_array.shape)
     
     def get_steric_layer_thickness(self, potential):
         """Get the steric layer thickness for a given potential."""
