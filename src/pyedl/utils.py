@@ -5,10 +5,10 @@ Utility functions for the electrochemical capacitance package.
 import warnings
 
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy.constants as sc
 from .fitting import fit_counterion_permittivity_curve
 from .models import StericModel, ElectrochemicalSystem
+from .plotting import plot_capacitance_vs_potential as _plot_capacitance_vs_potential
 
 
 def polarizability_angstrom_to_si(alpha_angstrom):
@@ -32,25 +32,6 @@ def polarizability_angstrom_to_si(alpha_angstrom):
     alpha_si = alpha_angstrom * conversion_factor
 
     return alpha_si
-
-
-def _calculate_capacitance_sweep(model, potentials, use_jit_sweep=False):
-    """Calculate capacitance over a potential sweep using the requested solver path."""
-    potentials_array = np.asarray(potentials, dtype=float)
-
-    if use_jit_sweep:
-        return np.asarray(model.analytical_capacitance_sweep_jit(potentials_array), dtype=float)
-
-    capacitances = []
-    for pot in potentials_array:
-        try:
-            capacitance = model.analytical_capacitance(float(pot))
-            capacitances.append(capacitance)
-        except Exception as e:
-            print(f"Error at potential {pot}V: {str(e)}")
-            capacitances.append(np.nan)
-
-    return np.array(capacitances, dtype=float)
 
 
 def plot_capacitance_vs_potential(system, expt_cap=None,
@@ -84,55 +65,17 @@ def plot_capacitance_vs_potential(system, expt_cap=None,
     tuple: (potentials, capacitances)
         The calculated potential and capacitance values
     """
-    # Create model
-    model = StericModel(system, steric_model=steric_model)
-    
-    # Define potentials
-    potentials = np.linspace(potential_range[0], potential_range[1], num_points)
-
-    # Calculate capacitance for each potential
-    capacitances = _calculate_capacitance_sweep(
-        model,
-        potentials,
+    _, _, data = _plot_capacitance_vs_potential(
+        system=system,
+        expt_cap=expt_cap,
+        potential_range=potential_range,
+        num_points=num_points,
+        steric_model=steric_model,
+        save_path=save_path,
+        show_plot=show_plot,
         use_jit_sweep=use_jit_sweep,
     )
-    
-    # Create plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(potentials, capacitances, 'r-', linewidth=3, label='Model')
-    
-    # Plot experimental data if provided
-    if expt_cap is not None:
-        plt.plot(expt_cap["pot"], expt_cap["cap"], '--k', label='Experimental')
-    
-    # Add labels and title
-    plt.xlabel('Potential (V)', fontsize=12)
-    plt.ylabel('Capacitance (μF/cm²)', fontsize=12)
-    plt.title(f'Analytical Capacitance vs Potential\nConcentration: {system.concentration} M', fontsize=14)
-    
-    # Add details in text box
-    ion_radii = system.get_ion_radii()
-    ion_polarizabilities = system.get_ion_polarizabilities()
-    textstr = (f'{system.cation.name}: radius = {ion_radii[0]} Å, α = {ion_polarizabilities[0]:.3f} Å³\n'
-               f'{system.anion.name}: radius = {ion_radii[1]} Å, α = {ion_polarizabilities[1]:.3f} Å³')
-    plt.annotate(textstr, xy=(0.02, 0.8), xycoords='axes fraction', 
-                fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor='white', alpha=0.7))
-    
-    # Add grid and legend
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.legend()
-    
-    # Save plot if path provided
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
-    # Show plot if requested
-    if show_plot:
-        plt.show()
-    else:
-        plt.close()
-    
-    return potentials, capacitances
+    return data['potentials'], data['capacitance']
 
 
 def save_capacitance_data(model, potentials, filename=None, use_jit_sweep=False):

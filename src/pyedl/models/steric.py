@@ -373,6 +373,7 @@ class StericModel(BaseElectrochemicalModel):
         # Calculate concentration and potential at position x
         if x <= H:
             conc = x * (-concentration_surface + self.c_bulk) / H + concentration_surface
+            phi = 0
         else:
             conc = self.c_bulk
             phi = 0
