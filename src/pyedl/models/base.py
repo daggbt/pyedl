@@ -103,6 +103,12 @@ class BaseElectrochemicalModel:
         self.ion_permitivities = [self.get_ion_permittivity(self.ion_polarizabilities[i], self.ion_volumes[i]) 
                                   for i in range(len(self.ion_volumes))]
 
+    def invalidate_caches(self):
+        """Clear cached values derived from the current model state."""
+        self.surface_volume_fraction_cache = {}
+        self.reduced_dielectric_cache = {}
+        self.steric_thickness_cache = {}
+
     def get_ion_parameters(self, potential):
         """
         Returns the parameters for the ion at the specified potential.

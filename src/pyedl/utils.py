@@ -135,10 +135,8 @@ def save_capacitance_data(model, potentials, filename=None):
     --------
     numpy.ndarray: Array of results
     """
-    # Clear caches to ensure recalculation 
-    model.reduced_dielectric_cache = {}
-    model.surface_volume_fraction_cache = {}
-    model.steric_thickness_cache = {}
+    # Clear caches to ensure recalculation
+    model.invalidate_caches()
 
     # Calculate capacitance for each potential
     results = []
@@ -213,13 +211,11 @@ def find_ion_permittivity_from_capacitance(model, potential, exp_capacitance,
         The found ion permittivity, resulting capacitance, and error
     """
     # Save original values
-    counterion_index = 0 if potential >= 0 else 1
+    counterion_index = 0 if potential < 0 else 1
     original_permittivity = model.ion_permitivities[counterion_index]
     
     # Clear caches to ensure recalculation with new values
-    model.surface_volume_fraction_cache = {}
-    model.reduced_dielectric_cache = {}
-    model.steric_thickness_cache = {}
+    model.invalidate_caches()
     
     # Define a function to calculate capacitance for a given ion permittivity
     def calculate_capacitance_with_epsilon(epsilon_i):
@@ -228,7 +224,7 @@ def find_ion_permittivity_from_capacitance(model, potential, exp_capacitance,
             model.ion_permitivities[counterion_index] = epsilon_i
             
             # Clear caches to ensure recalculation
-            model.reduced_dielectric_cache = {}
+            model.invalidate_caches()
             
             # Calculate capacitance
             capacitance = model.analytical_capacitance(potential)
@@ -289,9 +285,7 @@ def find_ion_permittivity_from_capacitance(model, potential, exp_capacitance,
     model.ion_permitivities[counterion_index] = original_permittivity
     
     # Clear caches again
-    model.surface_volume_fraction_cache = {}
-    model.reduced_dielectric_cache = {}
-    model.steric_thickness_cache = {}
+    model.invalidate_caches()
     
     print(f"Found ion permittivity: {best_epsilon:.2f}")
     print(f"Resulting capacitance: {best_capacitance:.2f} μF/cm² (target: {exp_capacitance:.2f} μF/cm²)")
