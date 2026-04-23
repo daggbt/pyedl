@@ -29,6 +29,16 @@ class StericModel(BaseElectrochemicalModel):
         """
         super().__init__(system)
         self.steric_model = steric_model
+
+    def _normalize_cache_value(self, value):
+        """Convert cache inputs into hashable, precision-stable values."""
+        if isinstance(value, np.ndarray):
+            return self._normalize_cache_value(value.tolist())
+        if isinstance(value, (list, tuple)):
+            return tuple(self._normalize_cache_value(item) for item in value)
+        if isinstance(value, (float, np.floating)):
+            return round(float(value), 12)
+        return value
     
     def carnahan_starling(self, phi, relative_to_bulk=True):
         """Carnahan-Starling model for steric energy."""
@@ -131,13 +141,18 @@ class StericModel(BaseElectrochemicalModel):
     
     def get_steric_parameter_phi(self, potential, nes=None, relative_to_bulk=True):
         """Find the equilibrium volume fraction at the electrode surface."""
-        # Check if we've already calculated this value
-        potential_key = round(potential, 9)  # Round to avoid float precision issues
-        if potential_key in self.surface_volume_fraction_cache:
-            return self.surface_volume_fraction_cache[potential_key]
-        
         if nes is None:
             nes = []
+
+        cache_key = (
+            round(potential, 9),
+            self._normalize_cache_value(nes),
+            relative_to_bulk,
+        )
+
+        # Check if we've already calculated this value
+        if cache_key in self.surface_volume_fraction_cache:
+            return self.surface_volume_fraction_cache[cache_key]
             
         # Define root finding function
         root_solvent = lambda phi: self.zero_func_phi(phi, potential, nes, relative_to_bulk)
@@ -180,7 +195,7 @@ class StericModel(BaseElectrochemicalModel):
                     
                     if result.success and abs(root_solvent(result.x)) < 1e-20:
                         root = result.x
-                        self.surface_volume_fraction_cache[potential_key] = root
+                        self.surface_volume_fraction_cache[cache_key] = root
                         return root
                     
                     # If that fails, fall back to an approximation
@@ -211,7 +226,7 @@ class StericModel(BaseElectrochemicalModel):
                         root = max(1e-6, min(0.999, root))
                     
                     # Cache the result
-                    self.surface_volume_fraction_cache[potential_key] = root
+                    self.surface_volume_fraction_cache[cache_key] = root
 
                     return root
             
@@ -255,7 +270,7 @@ class StericModel(BaseElectrochemicalModel):
             root = max(1e-6, min(0.999, root))
         
         # Cache the result
-        self.surface_volume_fraction_cache[potential_key] = root
+        self.surface_volume_fraction_cache[cache_key] = root
         
         return root
     
@@ -493,12 +508,15 @@ class StericModel(BaseElectrochemicalModel):
         tuple: (capacitance, charge_density)
             Differential capacitance in µF/cm² and charge density in C/m²
         """
+        if abs(potential) < 1e-10:
+            return self.analytical_capacitance(0.0), 0.0
+
         try:
             # Calculate charge density at given potential
             c_density = self.charge_density(potential)
             
             # Very small step for numerical derivative
-            del_pot = min(1e-6, abs(potential) * 1e-3)  # Adaptive step size
+            del_pot = 1e-6 if abs(potential) < 1e-10 else min(1e-6, abs(potential) * 1e-3)
             
             # Calculate charge density at slightly higher potential
             c_density_plus = self.charge_density(potential + del_pot)
@@ -523,7 +541,7 @@ class StericModel(BaseElectrochemicalModel):
     def get_entropic_energy(self, potential):
         """
         Calculate the entropic component of the grand potential.
-        Eq. 17 in manuscript.
+        Eq. 16 in manuscript.
         """
         if abs(potential) < 1e-10:
             return 0.0
@@ -538,7 +556,7 @@ class StericModel(BaseElectrochemicalModel):
         
         H = self.get_steric_layer_thickness(potential)
         
-        # Eq 17
+        # Eq 16
         # Ω_en / kBT = (H/2) * [ c0^2/(c0-cb) * ln(c0/cb) + (cb - 3c0)/2 ]
         
         # Handle singularity when c0 -> cb (low potential)
@@ -555,7 +573,7 @@ class StericModel(BaseElectrochemicalModel):
     def get_electrostatic_energy(self, potential):
         """
         Calculate the electrostatic component of the grand potential.
-        Eq. 18 in manuscript.
+        Eq. 17 in manuscript.
         """
         if abs(potential) < 1e-10:
             return 0.0
@@ -573,7 +591,7 @@ class StericModel(BaseElectrochemicalModel):
         reduced_dielectric = self.get_reduced_dielectric_from_potential(potential)
         epsilon_adjusted = sc.epsilon_0 * reduced_dielectric
         
-        # Eq 18
+        # Eq 17
         # Ω_el = (z^2 e^2 H^3 / 120ε) * [3c0^2 + 9c0cb + 8cb^2]
         # z*e is q
         
@@ -585,7 +603,7 @@ class StericModel(BaseElectrochemicalModel):
     def get_steric_free_energy(self, potential):
         """
         Calculate the steric component of the grand potential.
-        Eq. 19 in manuscript.
+        Eq. 18 in manuscript.
         """
         if abs(potential) < 1e-10:
             return 0.0
@@ -603,7 +621,7 @@ class StericModel(BaseElectrochemicalModel):
         
         H = self.get_steric_layer_thickness(potential)
         
-        # Eq 19
+        # Eq 18
         # Ω_st / kBT = (H/v) * [ (1 + 3(1-φ0)(1-φb))/((1-φ0)(1-φb)) + 2/(φb-φ0) * ln((1-φ0)/(1-φb)) ] 
         #              - (H/2)(cb-c0) * [ (4-3φb)/(1-φb)^2 ]
         
