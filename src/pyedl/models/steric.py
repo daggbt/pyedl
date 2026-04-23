@@ -39,6 +39,14 @@ class StericModel(BaseElectrochemicalModel):
         if isinstance(value, (float, np.floating)):
             return round(float(value), 12)
         return value
+
+    def _restore_input_shape(self, values, template):
+        """Return scalars for scalar inputs and ndarrays for array-like inputs."""
+        array = np.asarray(values, dtype=float)
+        template_array = np.asarray(template)
+        if template_array.ndim == 0:
+            return float(array.reshape(-1)[0])
+        return array
     
     def carnahan_starling(self, phi, relative_to_bulk=True):
         """Carnahan-Starling model for steric energy."""
@@ -315,14 +323,14 @@ class StericModel(BaseElectrochemicalModel):
         # Calculate characteristic length with reduced dielectric
         H = self.get_steric_layer_thickness(potential)
         
-        # Calculate concentration and potential at position x
-        if x <= H:
-            conc = x * (-concentration_surface + self.c_bulk) / H + concentration_surface
-        else:
-            conc = self.c_bulk
-            phi = 0
-            
-        return conc, phi
+        x_array = np.asarray(x, dtype=float)
+        inside = x_array <= H
+
+        conc_inside = x_array * (-concentration_surface + self.c_bulk) / H + concentration_surface
+        conc = np.where(inside, conc_inside, self.c_bulk)
+        phi = np.zeros_like(x_array, dtype=float)
+
+        return self._restore_input_shape(conc, x), self._restore_input_shape(phi, x)
     
     def electrostatic_potential_in_steric_layer(self, x, potential):
         """Calculate electrostatic potential as a function of distance from electrode."""
@@ -342,18 +350,18 @@ class StericModel(BaseElectrochemicalModel):
         # Calculate characteristic length with reduced dielectric
         H = self.get_steric_layer_thickness(potential)
         
-        # Calculate concentration and potential at position x
-        if x <= H:
-            phi = q * (c_s - self.c_bulk) * x**3 / 6 / H 
-            phi -= q * c_s * x**2 / 2 
-            phi +=  q * (c_s + self.c_bulk) * H * x / 2 
-            phi -= q * (c_s + 2 * self.c_bulk) * H**2 / 6 
-            phi /= epsilon_adjusted
-            phi *= 1000 * sc.N_A
-        else:
-            phi = 0
-            
-        return phi
+        x_array = np.asarray(x, dtype=float)
+        inside = x_array <= H
+
+        phi = q * (c_s - self.c_bulk) * x_array**3 / 6 / H
+        phi -= q * c_s * x_array**2 / 2
+        phi += q * (c_s + self.c_bulk) * H * x_array / 2
+        phi -= q * (c_s + 2 * self.c_bulk) * H**2 / 6
+        phi /= epsilon_adjusted
+        phi *= 1000 * sc.N_A
+        phi = np.where(inside, phi, 0.0)
+
+        return self._restore_input_shape(phi, x)
     
     def electric_field_in_steric_layer(self, x, potential):
         """Calculate electric field at distance x from electrode."""
@@ -373,17 +381,17 @@ class StericModel(BaseElectrochemicalModel):
         # Calculate characteristic length with reduced dielectric
         H = self.get_steric_layer_thickness(potential)
         
-        # Calculate concentration and potential at position x
-        if x <= H:
-            efield = - q  * (c_s - self.c_bulk) * x**2 / 2 / H 
-            efield += q * c_s * x 
-            efield -=  q * (c_s + self.c_bulk) * H / 2 
-            efield /= epsilon_adjusted
-            efield *= 1000 * sc.N_A
-        else:
-            efield = 0
-            
-        return efield
+        x_array = np.asarray(x, dtype=float)
+        inside = x_array <= H
+
+        efield = -q * (c_s - self.c_bulk) * x_array**2 / 2 / H
+        efield += q * c_s * x_array
+        efield -= q * (c_s + self.c_bulk) * H / 2
+        efield /= epsilon_adjusted
+        efield *= 1000 * sc.N_A
+        efield = np.where(inside, efield, 0.0)
+
+        return self._restore_input_shape(efield, x)
     
     def charge_density(self, potential):
         """
