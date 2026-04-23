@@ -37,9 +37,9 @@ git clone https://github.com/daggbt/pyedl.git
 cd pyedl
 
 # Run examples directly
-uv run --with-editable . examples/capacitance.py
-uv run --with-editable . examples/energy.py
-uv run --with-editable . examples/fitting.py
+uv run examples/capacitance.py
+uv run examples/energy.py
+uv run examples/fitting.py
 ```
 
 ### Using pip
@@ -133,7 +133,7 @@ For inversion or optimization workflows, the JIT sweep path can evaluate an orde
 ```python
 import numpy as np
 from pyedl import ion_database, solvent_database
-from pyedl import ElectrochemicalSystem, StericModel
+from pyedl import ElectrochemicalSystem, StericModel, fit_counterion_permittivity_curve
 
 system = ElectrochemicalSystem(
     cation=ion_database['Na+_hydrated'],
@@ -144,27 +144,25 @@ system = ElectrochemicalSystem(
 )
 
 potentials = np.linspace(0.02, 1.0, 251)
-model = StericModel(system, steric_model='cs')
+target_model = StericModel(system, steric_model='cs')
+fit_model = StericModel(system, steric_model='cs')
 
 # Synthetic target curve for a positive-potential sweep.
 target_epsilon = 4.75
-model.ion_permitivities[1] = target_epsilon
-model.invalidate_caches()
-target_capacitance = model.analytical_capacitance_sweep_jit(potentials)
+target_model.ion_permitivities[1] = target_epsilon
+target_model.invalidate_caches()
+target_capacitance = target_model.analytical_capacitance_sweep_jit(potentials)
 
-best_epsilon = None
-best_rmse = float('inf')
-for epsilon_i in np.linspace(1.0, 10.0, 40):
-    model.ion_permitivities[1] = float(epsilon_i)
-    model.invalidate_caches()
-    capacitance = model.analytical_capacitance_sweep_jit(potentials)
-    rmse = np.sqrt(np.mean((capacitance - target_capacitance) ** 2))
-    if rmse < best_rmse:
-        best_rmse = rmse
-        best_epsilon = epsilon_i
+fit_result = fit_counterion_permittivity_curve(
+    fit_model,
+    potentials,
+    target_capacitance,
+    epsilon_bounds=(1.0, 10.0),
+    use_jit_sweep=True,
+)
 
-print(f"Recovered permittivity: {best_epsilon:.3f}")
-print(f"Curve-fit RMSE: {best_rmse:.3e} μF/cm²")
+print(f"Recovered permittivity: {fit_result.fitted_permittivity:.3f}")
+print(f"Curve-fit RMSE: {fit_result.rmse:.3e} μF/cm²")
 ```
 
 For a complete runnable example, see `examples/fitting.py`.
@@ -177,6 +175,7 @@ For a complete runnable example, see `examples/fitting.py`.
 *   `pyedl.materials`: Chemical property definitions.
     *   `Ion`: Properties like radius, charge, polarizability.
     *   `Solvent`: Dielectric constant, polarizability.
+*   `pyedl.fitting`: Inversion helpers for fitting counterion permittivities to capacitance curves.
 *   `pyedl.utils`: Helper functions for plotting and data export.
 
 ## Citation
