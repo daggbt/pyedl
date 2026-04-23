@@ -9,3 +9,9 @@ env/
 build/
 dist/
 *.egg-info/
+
+ephemerals/
+
+*.png
+*.csv
+*.dat
