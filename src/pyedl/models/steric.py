@@ -307,11 +307,16 @@ class StericModel(BaseElectrochemicalModel):
 
         return roots.reshape(potentials_array.shape)
 
-    def analytical_capacitance_sweep_jit(self, potentials):
+    def analytical_capacitance_sweep_jit(self, potentials, phi_roots=None):
         """Evaluate analytical capacitance over an ordered sweep using the compiled kernel."""
         potentials_array = np.asarray(potentials, dtype=float)
         flat_potentials = np.ascontiguousarray(potentials_array.reshape(-1), dtype=float)
-        roots = np.ascontiguousarray(self.get_steric_parameter_phi_sweep_jit(flat_potentials), dtype=float)
+        if phi_roots is None:
+            roots = np.ascontiguousarray(self.get_steric_parameter_phi_sweep_jit(flat_potentials), dtype=float)
+        else:
+            roots = np.ascontiguousarray(np.asarray(phi_roots, dtype=float).reshape(-1), dtype=float)
+            if roots.shape != flat_potentials.shape:
+                raise ValueError("phi_roots must have the same shape as potentials.")
         capacitances = analytical_capacitance_sweep_numba(
             flat_potentials,
             roots,

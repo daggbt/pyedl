@@ -31,9 +31,29 @@ def polarizability_angstrom_to_si(alpha_angstrom):
     return alpha_si
 
 
+def _calculate_capacitance_sweep(model, potentials, use_jit_sweep=False):
+    """Calculate capacitance over a potential sweep using the requested solver path."""
+    potentials_array = np.asarray(potentials, dtype=float)
+
+    if use_jit_sweep:
+        return np.asarray(model.analytical_capacitance_sweep_jit(potentials_array), dtype=float)
+
+    capacitances = []
+    for pot in potentials_array:
+        try:
+            capacitance = model.analytical_capacitance(float(pot))
+            capacitances.append(capacitance)
+        except Exception as e:
+            print(f"Error at potential {pot}V: {str(e)}")
+            capacitances.append(np.nan)
+
+    return np.array(capacitances, dtype=float)
+
+
 def plot_capacitance_vs_potential(system, expt_cap=None,
-                                 potential_range=(-1, 1), num_points=101, 
-                                 steric_model='cs', save_path=None, show_plot=True):
+                                 potential_range=(-1, 1), num_points=101,
+                                 steric_model='cs', save_path=None, show_plot=True,
+                                 use_jit_sweep=False):
     """
     Plots analytical capacitance over potential for an electrochemical system.
     
@@ -53,6 +73,8 @@ def plot_capacitance_vs_potential(system, expt_cap=None,
         Path to save the plot (if None, plot is not saved)
     show_plot : bool
         Whether to display the plot
+    use_jit_sweep : bool
+        Whether to evaluate the model sweep with the explicit JIT path
     
     Returns:
     --------
@@ -64,21 +86,13 @@ def plot_capacitance_vs_potential(system, expt_cap=None,
     
     # Define potentials
     potentials = np.linspace(potential_range[0], potential_range[1], num_points)
-    
+
     # Calculate capacitance for each potential
-    capacitances = []
-    
-    for pot in potentials:
-        try:
-            # Use analytical capacitance
-            capacitance = model.analytical_capacitance(pot)
-            capacitances.append(capacitance)
-        except Exception as e:
-            print(f"Error at potential {pot}V: {str(e)}")
-            capacitances.append(np.nan)  # Use NaN for error points
-    
-    # Convert to numpy array
-    capacitances = np.array(capacitances)
+    capacitances = _calculate_capacitance_sweep(
+        model,
+        potentials,
+        use_jit_sweep=use_jit_sweep,
+    )
     
     # Create plot
     plt.figure(figsize=(10, 6))
@@ -118,7 +132,7 @@ def plot_capacitance_vs_potential(system, expt_cap=None,
     return potentials, capacitances
 
 
-def save_capacitance_data(model, potentials, filename=None):
+def save_capacitance_data(model, potentials, filename=None, use_jit_sweep=False):
     """
     Calculate and save capacitance data to file.
     
@@ -130,6 +144,8 @@ def save_capacitance_data(model, potentials, filename=None):
         Array of potentials to calculate capacitance for
     filename : str or None
         Output filename (if None, generates automatically)
+    use_jit_sweep : bool
+        Whether to evaluate the ordered sweep with the explicit JIT path
     
     Returns:
     --------
@@ -138,28 +154,50 @@ def save_capacitance_data(model, potentials, filename=None):
     # Clear caches to ensure recalculation
     model.invalidate_caches()
 
+    potentials_array = np.asarray(potentials, dtype=float)
+    capacitances_jit = None
+    volfrac_surfaces_jit = None
+    if use_jit_sweep:
+        volfrac_surfaces_jit = np.asarray(
+            model.get_steric_parameter_phi_sweep_jit(potentials_array),
+            dtype=float,
+        )
+        capacitances_jit = np.asarray(
+            model.analytical_capacitance_sweep_jit(
+                potentials_array,
+                phi_roots=volfrac_surfaces_jit,
+            ),
+            dtype=float,
+        )
+
     # Calculate capacitance for each potential
     results = []
-    for pot in potentials:
+    for idx, pot in enumerate(potentials_array):
+        potential = float(pot)
         try:
-            # Calculate capacitance and charge density
-            capacitance = model.analytical_capacitance(pot)
-            charge = model.charge_density(pot)
-            volfrac_surface = model.get_steric_parameter_phi(pot, [])
-            q, v, _ = model.get_ion_parameters(pot)
+            if capacitances_jit is None:
+                capacitance = model.analytical_capacitance(potential)
+                volfrac_surface = model.get_steric_parameter_phi(potential, [])
+            else:
+                capacitance = float(capacitances_jit[idx])
+                volfrac_surface = float(volfrac_surfaces_jit[idx])
+
+            # Calculate charge density and dependent quantities
+            charge = model.charge_density(potential)
+            q, v, _ = model.get_ion_parameters(potential)
             c_s = volfrac_surface / v / 1000 / sc.N_A
             volfrac_bulk = model.volfrac_b
-            
+
             # Get reduced dielectric constant
-            reduced_dielectric = model.get_reduced_dielectric_from_potential(pot)
-            
-            results.append([pot, capacitance, charge, reduced_dielectric, 
+            reduced_dielectric = model.get_reduced_dielectric_from_potential(potential)
+
+            results.append([potential, capacitance, charge, reduced_dielectric,
                           volfrac_surface, volfrac_bulk, c_s])
-            
+
         except Exception as e:
-            print(f"Error processing potential {pot}: {str(e)}")
+            print(f"Error processing potential {potential}: {str(e)}")
             # Add placeholder values on error
-            results.append([pot, 0.0, 0.0, model.epsilon_r, 0.0, 0.0, 0.0])
+            results.append([potential, 0.0, 0.0, model.epsilon_r, 0.0, 0.0, 0.0])
     
     # Convert results to numpy array
     capacitance_array = np.array(results)
