@@ -1,6 +1,6 @@
 # Validation Cases
 
-This directory documents the named analytical validation cases used by the Phase 0 regression tests.
+This directory documents the named analytical validation cases used by the regression tests.
 
 The goal is not to claim these are exhaustive physical benchmarks. The goal is to keep a small set of repeatable reference calculations so future API and model changes can be checked against stable outputs.
 
