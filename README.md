@@ -37,8 +37,9 @@ git clone https://github.com/daggbt/pyedl.git
 cd pyedl
 
 # Run examples directly
-uv run examples/capacitance.py
-uv run examples/energy.py
+uv run --with-editable . examples/capacitance.py
+uv run --with-editable . examples/energy.py
+uv run --with-editable . examples/fitting.py
 ```
 
 ### Using pip
@@ -124,6 +125,49 @@ plot_capacitance_vs_potential(
     save_path='capacitance_curve.png'
 )
 ```
+
+### 4. Fitting a Counterion Permittivity
+
+For inversion or optimization workflows, the JIT sweep path can evaluate an ordered capacitance curve efficiently while scanning candidate parameters.
+
+```python
+import numpy as np
+from pyedl import ion_database, solvent_database
+from pyedl import ElectrochemicalSystem, StericModel
+
+system = ElectrochemicalSystem(
+    cation=ion_database['Na+_hydrated'],
+    anion=ion_database['F-_hydrated'],
+    solvent=solvent_database['water'],
+    concentration=1.0,
+    temperature=298.15,
+)
+
+potentials = np.linspace(0.02, 1.0, 251)
+model = StericModel(system, steric_model='cs')
+
+# Synthetic target curve for a positive-potential sweep.
+target_epsilon = 4.75
+model.ion_permitivities[1] = target_epsilon
+model.invalidate_caches()
+target_capacitance = model.analytical_capacitance_sweep_jit(potentials)
+
+best_epsilon = None
+best_rmse = float('inf')
+for epsilon_i in np.linspace(1.0, 10.0, 40):
+    model.ion_permitivities[1] = float(epsilon_i)
+    model.invalidate_caches()
+    capacitance = model.analytical_capacitance_sweep_jit(potentials)
+    rmse = np.sqrt(np.mean((capacitance - target_capacitance) ** 2))
+    if rmse < best_rmse:
+        best_rmse = rmse
+        best_epsilon = epsilon_i
+
+print(f"Recovered permittivity: {best_epsilon:.3f}")
+print(f"Curve-fit RMSE: {best_rmse:.3e} μF/cm²")
+```
+
+For a complete runnable example, see `examples/fitting.py`.
 
 ## Package Structure
 
