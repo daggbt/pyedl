@@ -5,6 +5,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
+from pyedl import (
+    plot_capacitance_vs_potential as root_plot_capacitance_vs_potential,
+    plot_energy_components_vs_potential as root_plot_energy_components_vs_potential,
+    plot_profiles_at_potential as root_plot_profiles_at_potential,
+    sample_capacitance_curve as root_sample_capacitance_curve,
+    sample_energy_components as root_sample_energy_components,
+    sample_profiles as root_sample_profiles,
+)
 from pyedl.plotting import (
     plot_capacitance_vs_potential,
     plot_energy_components_vs_potential,
@@ -13,6 +21,31 @@ from pyedl.plotting import (
     sample_energy_components,
     sample_profiles,
 )
+
+
+def test_plotting_helpers_are_exported_from_package_root():
+    assert root_plot_capacitance_vs_potential is not plot_capacitance_vs_potential
+    assert root_plot_energy_components_vs_potential is plot_energy_components_vs_potential
+    assert root_plot_profiles_at_potential is plot_profiles_at_potential
+    assert root_sample_capacitance_curve is sample_capacitance_curve
+    assert root_sample_energy_components is sample_energy_components
+    assert root_sample_profiles is sample_profiles
+
+
+def test_root_plot_capacitance_vs_potential_preserves_legacy_return_shape(tmp_path, naf_system):
+    output_path = tmp_path / 'compat-capacitance.png'
+
+    potentials, capacitance = root_plot_capacitance_vs_potential(
+        system=naf_system,
+        potential_range=(-0.5, 0.5),
+        num_points=11,
+        save_path=output_path,
+        show_plot=False,
+    )
+
+    assert output_path.exists()
+    assert potentials.shape == (11,)
+    assert capacitance.shape == (11,)
 
 
 def test_sample_capacitance_curve_matches_direct_model_calls(naf_model):

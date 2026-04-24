@@ -6,6 +6,7 @@ Example script demonstrating the pyedl package.
 from pathlib import Path
 import sys
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -15,7 +16,12 @@ if str(src_path) not in sys.path:
 
 from pyedl import ion_database, solvent_database
 from pyedl import ElectrochemicalSystem, StericModel
-from pyedl import plot_capacitance_vs_potential, save_capacitance_data
+from pyedl import save_capacitance_data
+from pyedl.plotting import (
+    plot_capacitance_vs_potential,
+    plot_profiles_at_potential,
+    sample_capacitance_curve,
+)
 
 
 def main():
@@ -66,19 +72,25 @@ def main():
         expt_cap = None
     
     # Plot NaF system
-    potentials, capacitances = plot_capacitance_vs_potential(
-        system_naf,
+    fig, _, naf_curve = plot_capacitance_vs_potential(
+        system=system_naf,
         expt_cap=expt_cap,
         potential_range=(-1, 1),
-        save_path='naf_capacitance.png'
+        save_path='naf_capacitance.png',
+        show_plot=False,
     )
+    plt.close(fig)
+    print(f"Saved naf_capacitance.png with {naf_curve['potentials'].size} sampled points")
     
     # Plot IL system
-    plot_capacitance_vs_potential(
-        system_il,
+    fig, _, il_curve = plot_capacitance_vs_potential(
+        system=system_il,
         potential_range=(-1, 1),
-        save_path='il_capacitance.png'
+        save_path='il_capacitance.png',
+        show_plot=False,
     )
+    plt.close(fig)
+    print(f"Saved il_capacitance.png with {il_curve['potentials'].size} sampled points")
     
     print("\n" + "="*50 + "\n")
     
@@ -101,19 +113,13 @@ def main():
     model_liu = StericModel(system_naf, steric_model='liu')
     
     # Compare at different potentials
-    test_potentials = np.linspace(-1, 1, 101)
-    cs_caps = []
-    liu_caps = []
-    
-    for pot in test_potentials:
-        cs_caps.append(model_naf.analytical_capacitance(pot))
-        liu_caps.append(model_liu.analytical_capacitance(pot))
+    cs_curve = sample_capacitance_curve(model=model_naf, potential_range=(-1, 1), num_points=101)
+    liu_curve = sample_capacitance_curve(model=model_liu, potential_range=(-1, 1), num_points=101)
     
     # Plot comparison
-    import matplotlib.pyplot as plt
     plt.figure(figsize=(8, 6))
-    plt.plot(test_potentials, cs_caps, 'b-', label='Carnahan-Starling')
-    plt.plot(test_potentials, liu_caps, 'r--', label='Liu')
+    plt.plot(cs_curve['potentials'], cs_curve['capacitance'], 'b-', label='Carnahan-Starling')
+    plt.plot(liu_curve['potentials'], liu_curve['capacitance'], 'r--', label='Liu')
     plt.xlabel('Potential (V)')
     plt.ylabel('Capacitance (μF/cm²)')
     plt.title('Comparison of Steric Models')
@@ -121,6 +127,21 @@ def main():
     plt.grid(True, alpha=0.3)
     plt.savefig('steric_model_comparison.png', dpi=300)
     plt.close()
+
+    print("\n" + "="*50 + "\n")
+
+    # Example 5: Plot steric-layer profiles with the public API
+    print("Example 5: Plotting steric-layer profiles")
+    fig, _, profile_data = plot_profiles_at_potential(
+        model=model_naf,
+        potential=0.8,
+        save_path='naf_profiles.png',
+    )
+    plt.close(fig)
+    print(
+        "Steric layer thickness at 0.8 V: "
+        f"{profile_data['steric_layer_thickness'] * 1e9:.2f} nm"
+    )
     
     print("Examples completed successfully!")
 

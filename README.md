@@ -111,20 +111,39 @@ print(f"  - Electrostatic: {electrostatic:.4e} J/m²")
 print(f"  - Steric: {steric:.4e} J/m²")
 ```
 
-### 3. Plotting
+### 3. Sampling and Plotting
 
-The package includes utility functions for quick visualization.
+The Phase 0 plotting API lives in `pyedl.plotting`, with the legacy root-level `pyedl.plot_capacitance_vs_potential` kept as a compatibility wrapper.
 
 ```python
-from pyedl import plot_capacitance_vs_potential
-
-# Plot capacitance vs potential curve
-plot_capacitance_vs_potential(
-    system,
-    potential_range=(-1.5, 1.5),
-    save_path='capacitance_curve.png'
+from pyedl.plotting import (
+    plot_capacitance_vs_potential,
+    plot_energy_components_vs_potential,
+    sample_profiles,
 )
+
+# Plot capacitance vs potential and keep the sampled data
+fig, ax, capacitance_data = plot_capacitance_vs_potential(
+    system=system,
+    potential_range=(-1.5, 1.5),
+    save_path='capacitance_curve.png',
+)
+
+# Plot grand-potential components with the same public API style
+fig, ax, energy_data = plot_energy_components_vs_potential(
+    system=system,
+    potential_range=(0.1, 1.0),
+    save_path='energy_components.png',
+)
+
+# Sample steric-layer profiles without creating a figure
+profile_data = sample_profiles(system=system, potential=0.8)
+print(profile_data['steric_layer_thickness'])
 ```
+
+If you need the older two-array return shape, `pyedl.plot_capacitance_vs_potential(...)` still returns `(potentials, capacitance)`.
+
+For complete runnable examples, see `examples/capacitance.py` and `examples/energy.py`.
 
 ### 4. Fitting a Counterion Permittivity
 
@@ -176,7 +195,8 @@ For a complete runnable example, see `examples/fitting.py`.
     *   `Ion`: Properties like radius, charge, polarizability.
     *   `Solvent`: Dielectric constant, polarizability.
 *   `pyedl.fitting`: Inversion helpers for fitting counterion permittivities to capacitance curves.
-*   `pyedl.utils`: Helper functions for plotting and data export.
+*   `pyedl.plotting`: Sampling and plotting helpers for capacitance, energy components, and steric-layer profiles.
+*   `pyedl.utils`: Data export helpers and compatibility wrappers for older plotting imports.
 
 ## Citation
 
