@@ -13,6 +13,7 @@ This codebase accompanies the manuscript:
 ## Features
 
 *   **Steric Models**: Implements the Carnahan-Starling (CS) and Liu equations of state for hard-sphere fluids within mean-field theory.
+*   **Composite Diffuse Layer (CDL)**: Implements a high-potential analytical approximation to the Bikerman model with a fully capped counterion concentration in the steric layer.
 *   **Semianalytical Approximation**: Uses a linear concentration profile approximation to solve the Poisson-Boltzmann equations analytically in the steric layer, providing rapid convergence to full numerical solutions at high potentials (>0.2 V) and concentrations (>1 M).
 *   **EDL Properties**:
     *   **Charge Density**: Calculate electrode surface charge density ($\sigma$).
@@ -186,10 +187,29 @@ print(f"Curve-fit RMSE: {fit_result.rmse:.3e} μF/cm²")
 
 For a complete runnable example, see `examples/fitting.py`.
 
+### 5. Composite Diffuse Layer Approximation
+
+The `CDLModel` provides the analytical composite diffuse layer approximation: below the steric threshold it follows the Gouy-Chapman branch, and above the threshold it uses a capped counterion layer matched to a diffuse tail.
+
+```python
+from pyedl import CDLModel
+
+cdl_model = CDLModel(system)
+phi = 1.0
+
+print(cdl_model.get_steric_layer_thickness(phi))
+print(cdl_model.charge_density(phi))
+print(cdl_model.analytical_capacitance(phi))
+print(cdl_model.get_total_energy(phi))
+```
+
+For a complete comparison against the Carnahan-Starling model, see `examples/cdl.py`.
+
 ## Package Structure
 
 *   `pyedl.models`: Core physics implementation.
     *   `StericModel`: Implementation of Carnahan-Starling and Liu models.
+    *   `CDLModel`: Composite Diffuse Layer approximation with a capped counterion steric layer.
     *   `ElectrochemicalSystem`: Container for system properties.
 *   `pyedl.materials`: Chemical property definitions.
     *   `Ion`: Properties like radius, charge, polarizability.
