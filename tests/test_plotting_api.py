@@ -92,6 +92,21 @@ def test_sample_profiles_returns_expected_arrays(naf_model):
     assert data['steric_layer_thickness'] > 0.0
 
 
+def test_steric_profile_methods_accept_array_inputs(naf_model):
+    steric_layer_thickness = naf_model.get_steric_layer_thickness(0.8)
+    x = np.linspace(0.0, 1.5 * steric_layer_thickness, 25)
+
+    concentration, profile_phi = naf_model.concentration_profile_in_steric_layer(x, 0.8)
+    electrostatic_potential = naf_model.electrostatic_potential_in_steric_layer(x, 0.8)
+    electric_field = naf_model.electric_field_in_steric_layer(x, 0.8)
+
+    assert concentration.shape == x.shape
+    assert profile_phi.shape == x.shape
+    assert electrostatic_potential.shape == x.shape
+    assert electric_field.shape == x.shape
+    assert isinstance(naf_model.electric_field_in_steric_layer(float(x[0]), 0.8), float)
+
+
 def test_plot_capacitance_vs_potential_returns_figure_axis_and_data(tmp_path, naf_system):
     output_path = tmp_path / 'capacitance.png'
 
