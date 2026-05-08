@@ -76,6 +76,8 @@ class BaseElectrochemicalModel:
         system : ElectrochemicalSystem
             The electrochemical system containing ions and solvent
         """
+        self.system = system
+
         # Physical constants
         self.temperature = system.temperature
         self.epsilon_r = system.get_dielectric_constant()

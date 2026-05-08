@@ -5,6 +5,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .cells import DoubleElectrodeCell
 from .models import ElectrochemicalSystem, StericModel
 
 
@@ -263,6 +264,230 @@ def plot_profiles_at_potential(
 
     for axis in axes:
         axis.grid(True, alpha=0.3)
+
+    _finalize_plot(fig, save_path=save_path, show_plot=show_plot)
+    return fig, axes, data
+
+
+def _resolve_cell(cell=None, model=None):
+    """Return a double-electrode cell from either a cell or a single-interface model."""
+    if cell is not None and model is not None:
+        raise ValueError("Provide either cell or model, not both.")
+    if cell is not None:
+        return cell
+    if model is None:
+        raise ValueError("Provide either cell or model.")
+    return DoubleElectrodeCell(model)
+
+
+def sample_cell_capacitance_curve(
+    cell=None,
+    model=None,
+    voltage_range=(-1, 1),
+    num_points=101,
+):
+    """Sample a double-electrode capacitance curve versus full-cell voltage."""
+    resolved_cell = _resolve_cell(cell=cell, model=model)
+    voltages = np.linspace(voltage_range[0], voltage_range[1], num_points)
+    capacitance = []
+    left_potential = []
+    right_potential = []
+    charge_density = []
+
+    for voltage in voltages:
+        split = resolved_cell.get_potential_split(float(voltage))
+        capacitance.append(resolved_cell.analytical_capacitance(float(voltage)))
+        left_potential.append(split.left_potential)
+        right_potential.append(split.right_potential)
+        charge_density.append(split.left_charge_density)
+
+    return {
+        'voltages': voltages,
+        'capacitance': np.array(capacitance, dtype=float),
+        'left_potential': np.array(left_potential, dtype=float),
+        'right_potential': np.array(right_potential, dtype=float),
+        'charge_density': np.array(charge_density, dtype=float),
+    }
+
+
+def sample_cell_energy_components(
+    cell=None,
+    model=None,
+    voltage_range=(0.1, 1.0),
+    num_points=50,
+):
+    """Sample double-electrode energy components versus full-cell voltage."""
+    resolved_cell = _resolve_cell(cell=cell, model=model)
+    voltages = np.linspace(voltage_range[0], voltage_range[1], num_points)
+    entropic = []
+    electrostatic = []
+    steric = []
+    total = []
+
+    for voltage in voltages:
+        components = resolved_cell.get_energy_components(float(voltage))
+        entropic.append(components['entropic'])
+        electrostatic.append(components['electrostatic'])
+        steric.append(components['steric'])
+        total.append(components['total'])
+
+    return {
+        'voltages': voltages,
+        'entropic': np.array(entropic, dtype=float),
+        'electrostatic': np.array(electrostatic, dtype=float),
+        'steric': np.array(steric, dtype=float),
+        'total': np.array(total, dtype=float),
+    }
+
+
+def sample_cell_profiles(
+    cell=None,
+    model=None,
+    cell_voltage=1.0,
+    separation_distance=None,
+    distance_unit=None,
+    num_points=200,
+):
+    """Sample full-cell double-electrode profiles at one cell voltage."""
+    resolved_cell = _resolve_cell(cell=cell, model=model)
+    return resolved_cell.sample_profiles(
+        cell_voltage=cell_voltage,
+        separation_distance=separation_distance,
+        distance_unit=distance_unit,
+        num_points=num_points,
+    )
+
+
+def plot_cell_capacitance_vs_voltage(
+    cell=None,
+    model=None,
+    voltage_range=(-1, 1),
+    num_points=101,
+    ax=None,
+    save_path=None,
+    show_plot=False,
+):
+    """Plot double-electrode capacitance and return the figure, axis, and data."""
+    data = sample_cell_capacitance_curve(
+        cell=cell,
+        model=model,
+        voltage_range=voltage_range,
+        num_points=num_points,
+    )
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.figure
+
+    ax.plot(data['voltages'], data['capacitance'], linewidth=2.5, label='Full cell')
+    ax.set_xlabel('Cell voltage (V)')
+    ax.set_ylabel('Differential capacitance (μF/cm²)')
+    ax.set_title('Double-electrode capacitance vs cell voltage')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    _finalize_plot(fig, save_path=save_path, show_plot=show_plot)
+    return fig, ax, data
+
+
+def plot_cell_energy_components_vs_voltage(
+    cell=None,
+    model=None,
+    voltage_range=(0.1, 1.0),
+    num_points=50,
+    ax=None,
+    save_path=None,
+    show_plot=False,
+):
+    """Plot full-cell energy components and return the figure, axis, and data."""
+    data = sample_cell_energy_components(
+        cell=cell,
+        model=model,
+        voltage_range=voltage_range,
+        num_points=num_points,
+    )
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.figure
+
+    ax.plot(data['voltages'], data['entropic'], label='Entropic', marker='o')
+    ax.plot(data['voltages'], data['electrostatic'], label='Electrostatic', marker='s')
+    ax.plot(data['voltages'], data['steric'], label='Steric', marker='^')
+    ax.plot(data['voltages'], data['total'], label='Total', marker='*', linewidth=2, color='black')
+    ax.set_xlabel('Cell voltage (V)')
+    ax.set_ylabel('Full-cell energy (J/m²)')
+    ax.set_title('Double-electrode energy components vs cell voltage')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    _finalize_plot(fig, save_path=save_path, show_plot=show_plot)
+    return fig, ax, data
+
+
+def plot_cell_profiles(
+    cell=None,
+    model=None,
+    cell_voltage=1.0,
+    separation_distance=None,
+    distance_unit=None,
+    num_points=200,
+    axes=None,
+    save_path=None,
+    show_plot=False,
+):
+    """Plot double-electrode profiles and return the figure, axes, and data."""
+    data = sample_cell_profiles(
+        cell=cell,
+        model=model,
+        cell_voltage=cell_voltage,
+        separation_distance=separation_distance,
+        distance_unit=distance_unit,
+        num_points=num_points,
+    )
+
+    if axes is None:
+        fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), sharex=True)
+    else:
+        fig = axes.flat[0].figure
+
+    axes = np.asarray(axes)
+    x_nm = data['x'] * 1e9
+    left_h_nm = data['left_steric_layer_thickness'] * 1e9
+    right_h_nm = (data['separation_distance'] - data['right_steric_layer_thickness']) * 1e9
+
+    axes[0, 0].plot(x_nm, data['potential'], color='tab:blue')
+    axes[0, 0].set_ylabel('Potential (V)')
+    axes[0, 0].set_title('Electric potential')
+
+    axes[0, 1].plot(x_nm, data['electric_field'], color='tab:orange')
+    axes[0, 1].set_ylabel('Electric field (V/m)')
+    axes[0, 1].set_title('Electric field')
+
+    axes[1, 0].plot(x_nm, data['cation_concentration'], label='Cation', color='tab:red')
+    axes[1, 0].plot(x_nm, data['anion_concentration'], label='Anion', color='tab:purple', linestyle='--')
+    axes[1, 0].set_ylabel('Concentration (mol/L)')
+    axes[1, 0].set_xlabel('Distance from left electrode (nm)')
+    axes[1, 0].set_title('Ion concentrations')
+    axes[1, 0].legend()
+
+    axes[1, 1].plot(x_nm, data['volume_charge_density'], color='tab:green')
+    axes[1, 1].set_ylabel('Charge density (C/m³)')
+    axes[1, 1].set_xlabel('Distance from left electrode (nm)')
+    axes[1, 1].set_title('Volume charge density')
+
+    for axis in axes.flat:
+        axis.axvline(left_h_nm, color='0.4', linestyle=':', linewidth=1)
+        axis.axvline(right_h_nm, color='0.4', linestyle=':', linewidth=1)
+        axis.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        f"Double-electrode profiles at {cell_voltage:.2f} V "
+        f"(left={data['left_potential']:.3f} V, right={data['right_potential']:.3f} V)"
+    )
+    fig.tight_layout()
 
     _finalize_plot(fig, save_path=save_path, show_plot=show_plot)
     return fig, axes, data

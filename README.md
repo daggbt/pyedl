@@ -14,6 +14,7 @@ This codebase accompanies the manuscript:
 
 *   **Steric Models**: Implements the Carnahan-Starling (CS) and Liu equations of state for hard-sphere fluids within mean-field theory.
 *   **Composite Diffuse Layer (CDL)**: Implements a high-potential analytical approximation to the Bikerman model with a fully capped counterion concentration in the steric layer.
+*   **Double-Electrode Cells**: Compute full-cell voltage splits, capacitance, energies, and profiles from charge neutrality rather than user-supplied electrode potentials.
 *   **Semianalytical Approximation**: Uses a linear concentration profile approximation to solve the Poisson-Boltzmann equations analytically in the steric layer, providing rapid convergence to full numerical solutions at high potentials (>0.2 V) and concentrations (>1 M).
 *   **EDL Properties**:
     *   **Charge Density**: Calculate electrode surface charge density ($\sigma$).
@@ -41,6 +42,7 @@ cd pyedl
 uv run examples/capacitance.py
 uv run examples/energy.py
 uv run examples/fitting.py
+uv run examples/double_electrode.py
 ```
 
 ### Using pip
@@ -205,8 +207,34 @@ print(cdl_model.get_total_energy(phi))
 
 For a complete comparison against the Carnahan-Starling model, see `examples/cdl.py`.
 
+### 6. Double-Electrode Full Cells
+
+For a double-electrode cell, provide the full-cell voltage. The left and right electrode potentials are computed automatically from charge neutrality, so they should not be supplied by the user.
+
+```python
+from pyedl import CDLModel, DoubleElectrodeCell
+
+single_interface_model = CDLModel(system)
+cell = DoubleElectrodeCell(single_interface_model)
+
+cell_voltage = 1.0
+split = cell.get_potential_split(cell_voltage)
+
+print(split.left_potential, split.right_potential)
+print(split.left_charge_density + split.right_charge_density)
+print(cell.analytical_capacitance(cell_voltage))
+print(cell.get_energy_components(cell_voltage))
+```
+
+`DoubleElectrodeCell` works as a wrapper around single-interface models. It uses the analytical CDL split when available and otherwise solves the charge-neutrality equation directly, which also supports the semianalytical CS/Liu models.
+
+For a complete runnable example, see `examples/double_electrode.py`.
+
 ## Package Structure
 
+*   `pyedl.cells`: Full-cell wrappers and potential-split helpers.
+    *   `DoubleElectrodeCell`: Computes double-electrode voltage splits and combines single-interface observables.
+    *   `PotentialSplit`: Dataclass containing left/right electrode potentials and charge-neutrality residuals.
 *   `pyedl.models`: Core physics implementation.
     *   `StericModel`: Implementation of Carnahan-Starling and Liu models.
     *   `CDLModel`: Composite Diffuse Layer approximation with a capped counterion steric layer.
